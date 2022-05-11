@@ -63,6 +63,7 @@ function Download_files(){
 	done
 }
 
+download_files
 unzip_files
 
 cd '../Data/train'

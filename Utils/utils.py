@@ -88,10 +88,37 @@ def depth_read(img, sparse_val):
     depth_png = np.array(img, dtype=int)
     depth_png = np.expand_dims(depth_png, axis=2)
     # make sure we have a proper 16bit depth map here.. not 8bit!
-    assert(np.max(depth_png) > 255)
-    depth = depth_png.astype(np.float) / 256.
+    assert(np.max(depth_png) <= 255)
+    depth = depth_png.astype(np.float) / 255.
     depth[depth_png == 0] = sparse_val
     return depth
+
+def velo_read(img, sparse_val, velo=False):
+    # loads depth map D from png file
+    # and returns it as a numpy array,
+    # for details see readme.txt
+    depth_png = np.array(img, dtype=int)
+    depth_png = np.expand_dims(depth_png, axis=2)
+    # make sure we have a proper 16bit depth map here.. not 8bit!
+    assert(np.max(depth_png) <= 255)
+    if velo:
+        depth_png = depth_png - 128
+    depth = depth_png.astype(np.float) / 255.
+    depth[depth_png == 0] = sparse_val
+    return depth
+
+
+def seg_read(img):
+    # loads depth map D from png file
+    # and returns it as a numpy array,
+    # for details see readme.txt
+    depth_png = np.array(img, dtype=int)
+    depth_png = np.expand_dims(depth_png, axis=2)
+    depth_png = depth_png.astype(np.uint8) / 30
+    # make sure we have a proper 16bit depth map here.. not 8bit!
+    assert(np.max(depth_png) <= 8)
+  
+    return depth_png
 
 
 class show_figs():

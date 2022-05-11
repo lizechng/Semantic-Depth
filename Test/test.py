@@ -23,13 +23,13 @@ import time
 
 #Training setttings
 parser = argparse.ArgumentParser(description='KITTI Depth Completion Task TEST')
-parser.add_argument('--dataset', type=str, default='kitti', choices = Datasets.allowed_datasets(), help='dataset to work with')
-parser.add_argument('--mod', type=str, default='mod', choices = Models.allowed_models(), help='Model for use')
+parser.add_argument('--dataset', type=str, default='zhoushan', choices = Datasets.allowed_datasets(), help='dataset to work with')
+parser.add_argument('--mod', type=str, default='sdn', choices = Models.allowed_models(), help='Model for use')
 parser.add_argument('--no_cuda', action='store_true', help='no gpu usage')
 parser.add_argument('--input_type', type=str, default='rgb', help='use rgb for rgbdepth')
 # Data augmentation settings
-parser.add_argument('--crop_w', type=int, default=1216, help='width of image after cropping')
-parser.add_argument('--crop_h', type=int, default=256, help='height of image after cropping')
+parser.add_argument('--crop_w', type=int, default=1000, help='width of image after cropping')
+parser.add_argument('--crop_h', type=int, default=352, help='height of image after cropping')
 
 # Paths settings
 parser.add_argument('--save_path', type= str, default='../Saved/best', help='save path')
@@ -39,7 +39,7 @@ parser.add_argument('--data_path', type=str, required=True, help='path to desire
 parser.add_argument("--cudnn", type=str2bool, nargs='?', const=True, default=True, help="cudnn optimization active")
 parser.add_argument('--multi', type=str2bool, nargs='?', const=True, default=False, help="use multiple gpus")
 parser.add_argument('--normal', type=str2bool, nargs='?', const=True, default=False, help="Normalize input")
-parser.add_argument('--max_depth', type=float, default=85.0, help="maximum depth of input")
+parser.add_argument('--max_depth', type=float, default=255.0, help="maximum depth of input")
 parser.add_argument('--sparse_val', type=float, default=0.0, help="encode sparse values with 0")
 parser.add_argument('--num_samples', default=0, type=int, help='number of samples')
 

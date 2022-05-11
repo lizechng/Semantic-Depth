@@ -11,7 +11,7 @@ import torch
 from PIL import Image
 import random
 import torchvision.transforms.functional as F
-from Utils.utils import depth_read
+from Utils.utils import depth_read, velo_read, seg_read
 
 
 def get_loader(args, dataset):
@@ -88,8 +88,10 @@ class Dataset_loader(Dataset):
 
         # Names
         self.img_name = 'img'
-        self.lidar_name = 'lidar_in' 
-        self.gt_name = 'gt' 
+        self.depth_name = 'depth_in'
+        self.velo_name = 'velo_in'
+        self.lidarGt_name = 'lidar_gt'
+        self.segGt_name = 'seg_gt'
 
         # Define random sampler
         self.num_samples = num_samples
@@ -99,49 +101,68 @@ class Dataset_loader(Dataset):
         """
         Conventional len method
         """
-        return len(self.dataset_type['lidar_in'])
+        return len(self.dataset_type['depth_in'])
 
 
-    def define_transforms(self, input, gt, img=None):
+    def define_transforms(self, input_depth, input_velo, lidarGt, segGt, img=None):
         # Define random variabels
         hflip_input = np.random.uniform(0.0, 1.0) > 0.5 and self.flip == 'hflip'
 
         if self.train:
-            i, j, h, w = transforms.RandomCrop.get_params(input, output_size=self.crop)
-            input = F.crop(input, i, j, h, w)
-            gt = F.crop(gt, i, j, h, w)
+            i, j, h, w = transforms.RandomCrop.get_params(input_depth, output_size=self.crop)
+            input_depth = F.crop(input_depth, i, j, h, w)
+            input_velo = F.crop(input_velo, i, j, h, w)
+            lidarGt = F.crop(lidarGt, i, j, h, w)
+            segGt = F.crop(segGt, i, j, h, w)
             if hflip_input:
-                input, gt = F.hflip(input), F.hflip(gt)
+                input_depth, input_velo, lidarGt, segGt = F.hflip(input_depth), F.hflip(input_velo), F.hflip(lidarGt), F.hflip(segGt)
 
             if self.use_rgb:
                 img = F.crop(img, i, j, h, w)
                 if hflip_input:
                     img = F.hflip(img)
-            input, gt = depth_read(input, self.sparse_val), depth_read(gt, self.sparse_val)
-            
+            input_depth, input_velo, lidarGt, segGt = depth_read(input_depth, self.sparse_val), \
+                                                      velo_read(input_velo, self.sparse_val, True), \
+                                                      depth_read(lidarGt, self.sparse_val), \
+                                                      seg_read(segGt)
+
         else:
-            input, gt = self.center_crop(input), self.center_crop(gt)
+            input_depth, input_velo, lidarGt, segGt = self.center_crop(input_depth), self.center_crop(input_velo),\
+                                                      self.center_crop(lidarGt), self.center_crop(segGt)
             if self.use_rgb:
                 img = self.center_crop(img)
-            input, gt = depth_read(input, self.sparse_val), depth_read(gt, self.sparse_val)
+            input_depth, input_velo, lidarGt, segGt = depth_read(input_depth, self.sparse_val), \
+                                                      velo_read(input_velo, self.sparse_val, True), \
+                                                      depth_read(lidarGt, self.sparse_val), \
+                                                      seg_read(segGt)
             
 
-        return input, gt, img
+        return input_depth, input_velo, lidarGt, segGt, img
 
     def __getitem__(self, idx):
         """
         Args: idx (int): Index of images to make batch
         Returns (tuple): Sample of velodyne data and ground truth.
         """
-        sparse_depth_name = os.path.join(self.dataset_type[self.lidar_name][idx])
-        gt_name = os.path.join(self.dataset_type[self.gt_name][idx])
+        sparse_depth_name = os.path.join(self.dataset_type[self.depth_name][idx])
+        sparse_velo_name = os.path.join(self.dataset_type[self.velo_name][idx])
+        lidarGt_name = os.path.join(self.dataset_type[self.lidarGt_name][idx])
+        segGt_name = os.path.join(self.dataset_type[self.segGt_name][idx])
         with open(sparse_depth_name, 'rb') as f:
             sparse_depth = Image.open(f)
             w, h = sparse_depth.size
+            # crop[0] should be h
             sparse_depth = F.crop(sparse_depth, h-self.crop[0], 0, self.crop[0], w)
-        with open(gt_name, 'rb') as f:
-            gt = Image.open(f)
-            gt = F.crop(gt, h-self.crop[0], 0, self.crop[0], w)
+        with open(sparse_velo_name, 'rb') as f:
+            sparse_velo = Image.open(f)
+            w, h = sparse_velo.size
+            sparse_velo = F.crop(sparse_velo, h-self.crop[0], 0, self.crop[0], w)
+        with open(lidarGt_name, 'rb') as f:
+            lidarGt = Image.open(f)
+            lidarGt = F.crop(lidarGt, h-self.crop[0], 0, self.crop[0], w)
+        with open(segGt_name, 'rb') as f:
+            segGt = Image.open(f)
+            segGt = F.crop(segGt, h-self.crop[0], 0, self.crop[0], w)
         img = None
         if self.use_rgb:
             img_name = self.dataset_type[self.img_name][idx]
@@ -149,12 +170,18 @@ class Dataset_loader(Dataset):
                 img = (Image.open(f).convert('RGB'))
             img = F.crop(img, h-self.crop[0], 0, self.crop[0], w)
 
-        sparse_depth_np, gt_np, img_pil = self.define_transforms(sparse_depth, gt, img)
-        input, gt = self.totensor(sparse_depth_np).float(), self.totensor(gt_np).float()
+        sparse_depth_np, sparse_velo_np, lidarGt_np, segGt_np, img_pil = self.define_transforms(sparse_depth, sparse_velo, lidarGt, segGt, img)
+        input_depth = self.totensor(sparse_depth_np).float()
+        input_velo = self.totensor(sparse_velo_np).float()
+        lidarGt = self.totensor(lidarGt_np).float()
+        segGt = self.totensor(segGt_np).float()
+
+        # input = input_depth
 
         if self.use_rgb:
             img_tensor = self.totensor(img_pil).float()
-            img_tensor = img_tensor*255.0
-            input = torch.cat((input, img_tensor), dim=0)
-        return input, gt
+            # in transform.ToTensor(), img.div(255)
+            img_tensor = img_tensor # *255.0 # TODO:
+            input = torch.cat((input_depth, input_velo, img_tensor), dim=0)
+        return input, lidarGt, segGt
 

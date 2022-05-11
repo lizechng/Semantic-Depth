@@ -3,4 +3,8 @@ final_old
 __pycache__/
 __pycache__
 Saved/
+DepthTrainData_352x1000/
+DepthTrainData_704x2000/
+Zhoushan/
+Zhoushan_mini/
 *.pth

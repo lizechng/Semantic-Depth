@@ -8,7 +8,8 @@ import torch.nn as nn
 import torch.utils.data
 import torch.nn.functional as F
 import numpy as np
-from .ERFNet import Net
+# from .ERFNet import Net
+from Models.ERFNet import Net
 
 class uncertainty_net(nn.Module):
     def __init__(self, in_channels, out_channels=1, thres=15):
@@ -172,3 +173,6 @@ if __name__ == '__main__':
     input = torch.rand((batch_size, in_channels, H, W)).cuda().float()
     out = model(input)
     print(out[0].shape)
+    # from tensorboardX import SummaryWriter
+    # with SummaryWriter(comment='UncertainNet') as w:
+    #     w.add_graph(model, input)

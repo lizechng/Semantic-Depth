@@ -29,19 +29,19 @@ from Utils.utils import str2bool, define_optim, define_scheduler, \
 
 # Training setttings
 parser = argparse.ArgumentParser(description='KITTI Depth Completion Task')
-parser.add_argument('--dataset', type=str, default='kitti', choices=Datasets.allowed_datasets(), help='dataset to work with')
-parser.add_argument('--nepochs', type=int, default=100, help='Number of epochs for training')
+parser.add_argument('--dataset', type=str, default='zhoushan', choices=Datasets.allowed_datasets(), help='dataset to work with')
+parser.add_argument('--nepochs', type=int, default=300, help='Number of epochs for training')
 parser.add_argument('--thres', type=int, default=0, help='epoch for pretraining')
 parser.add_argument('--start_epoch', type=int, default=0, help='Start epoch number for training')
-parser.add_argument('--mod', type=str, default='mod', choices=Models.allowed_models(), help='Model for use')
-parser.add_argument('--batch_size', type=int, default=7, help='batch size')
+parser.add_argument('--mod', type=str, default='sdn', choices=Models.allowed_models(), help='Model for use')
+parser.add_argument('--batch_size', type=int, default=2, help='batch size')
 parser.add_argument('--val_batch_size', default=None, help='batch size selection validation set')
 parser.add_argument('--learning_rate', metavar='lr', type=float, default=1e-3, help='learning rate')
 parser.add_argument('--no_cuda', action='store_true', help='no gpu usage')
 
 parser.add_argument('--evaluate', action='store_true', help='only evaluate')
 parser.add_argument('--resume', type=str, default='', help='resume latest saved run')
-parser.add_argument('--nworkers', type=int, default=8, help='num of threads')
+parser.add_argument('--nworkers', type=int, default=2, help='num of threads')
 parser.add_argument('--nworkers_val', type=int, default=0, help='num of threads')
 parser.add_argument('--no_dropout', action='store_true', help='no dropout in network')
 parser.add_argument('--subset', type=int, default=None, help='Take subset of train set')
@@ -54,9 +54,9 @@ parser.add_argument('--pretrained', type=str2bool, nargs='?', const=True, defaul
 parser.add_argument('--load_external_mod', type=str2bool, nargs='?', const=True, default=False, help='path to external mod')
 
 # Data augmentation settings
-parser.add_argument('--crop_w', type=int, default=1216, help='width of image after cropping')
-parser.add_argument('--crop_h', type=int, default=256, help='height of image after cropping')
-parser.add_argument('--max_depth', type=float, default=85.0, help='maximum depth of LIDAR input')
+parser.add_argument('--crop_w', type=int, default=1000, help='width of image after cropping')
+parser.add_argument('--crop_h', type=int, default=352, help='height of image after cropping')
+parser.add_argument('--max_depth', type=float, default=255.0, help='maximum depth of LIDAR input')
 parser.add_argument('--sparse_val', type=float, default=0.0, help='value to endode sparsity with')
 parser.add_argument("--rotate", type=str2bool, nargs='?', const=True, default=False, help="rotate image")
 parser.add_argument("--flip", type=str, default='hflip', help="flip image: vertical|horizontal")
@@ -76,21 +76,21 @@ parser.add_argument('--weight_decay', type=float, default=0, help='L2 weight dec
 parser.add_argument('--lr_decay', action='store_true', help='decay learning rate with rule')
 parser.add_argument('--niter', type=int, default=50, help='# of iter at starting learning rate')
 parser.add_argument('--niter_decay', type=int, default=400, help='# of iter to linearly decay learning rate to zero')
-parser.add_argument('--lr_policy', type=str, default=None, help='{}learning rate policy: lambda|step|plateau')
+parser.add_argument('--lr_policy', type=str, default='plateau', help='{}learning rate policy: lambda|step|plateau')
 parser.add_argument('--lr_decay_iters', type=int, default=7, help='multiply by a gamma every lr_decay_iters iterations')
 parser.add_argument('--clip_grad_norm', type=int, default=0, help='performs gradient clipping')
 parser.add_argument('--gamma', type=float, default=0.5, help='factor to decay learning rate every lr_decay_iters with')
 
 # Loss settings
 parser.add_argument('--loss_criterion', type=str, default='mse', choices=allowed_losses(), help="loss criterion")
-parser.add_argument('--print_freq', type=int, default=10000, help="print every x iterations")
+parser.add_argument('--print_freq', type=int, default=50, help="print every x iterations")
 parser.add_argument('--save_freq', type=int, default=100000, help="save every x interations")
 parser.add_argument('--metric', type=str, default='rmse', choices=allowed_metrics(), help="metric to use during evaluation")
 parser.add_argument('--metric_1', type=str, default='mae', choices=allowed_metrics(), help="metric to use during evaluation")
-parser.add_argument('--wlid', type=float, default=0.1, help="weight base loss")
-parser.add_argument('--wrgb', type=float, default=0.1, help="weight base loss")
+parser.add_argument('--wlid', type=float, default=1, help="weight base loss") # TODO:
+parser.add_argument('--wrgb', type=float, default=1, help="weight base loss")
 parser.add_argument('--wpred', type=float, default=1, help="weight base loss")
-parser.add_argument('--wguide', type=float, default=0.1, help="weight base loss")
+parser.add_argument('--wguide', type=float, default=1, help="weight base loss")
 # Cudnn
 parser.add_argument("--cudnn", type=str2bool, nargs='?', const=True,
                     default=True, help="cudnn optimization active")
@@ -108,6 +108,12 @@ parser.add_argument('--world_size', default=1, type=int,
 parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
 parser.add_argument('--local_rank', dest="local_rank", default=0, type=int)
 
+class CrossEntropyLoss2d(torch.nn.Module):
+    def __init__(self, weight=None):
+        super(CrossEntropyLoss2d, self).__init__()
+        self.loss = torch.nn.NLLLoss2d(weight)
+    def forward(self, outputs, targets, epoch=0):
+        return self.loss(torch.nn.functional.log_softmax(outputs, dim=1), targets.long())
 
 def main():
     global args
@@ -132,8 +138,8 @@ def main():
         raise Exception("No gpu available for usage")
     torch.backends.cudnn.benchmark = args.cudnn
     # Init model
-    channels_in = 1 if args.input_type == 'depth' else 4
-    model = Models.define_model(mod=args.mod, in_channels=channels_in, thres=args.thres)
+    channels_in = 1 if args.input_type == 'depth' else 5
+    model = Models.define_model(mod=args.mod)
     define_init_weights(model, args.weight_init)
     # Load on gpu before passing params to optimizer
     if not args.no_cuda:
@@ -162,10 +168,12 @@ def main():
     criterion_local = define_loss(args.loss_criterion)
     criterion_lidar = define_loss(args.loss_criterion)
     criterion_rgb = define_loss(args.loss_criterion)
-    criterion_guide = define_loss(args.loss_criterion)
+    # criterion_guide = define_loss(args.loss_criterion)
+    weight = torch.ones(9)
+    criterion_seg = CrossEntropyLoss2d(None)
 
     # INIT dataset
-    dataset = Datasets.define_dataset(args.dataset, args.data_path, args.input_type, args.side_selection)
+    dataset = Datasets.define_dataset(args.dataset, args.data_path, args.input_type)
     dataset.prepare_dataset()
     train_loader, valid_loader, valid_selection_loader = get_loader(args, dataset)
 
@@ -198,23 +206,23 @@ def main():
             print("=> no checkpoint found at '{}'".format(path))
 
     # Only evaluate
-    elif args.evaluate:
-        print("Evaluate only")
-        best_file_lst = glob.glob(os.path.join(args.save_path, 'model_best*'))
-        if len(best_file_lst) != 0:
-            best_file_name = best_file_lst[0]
-            print(best_file_name)
-            if os.path.isfile(best_file_name):
-                sys.stdout = Logger(os.path.join(args.save_path, 'Evaluate.txt'))
-                print("=> loading checkpoint '{}'".format(best_file_name))
-                checkpoint = torch.load(best_file_name)
-                model.load_state_dict(checkpoint['state_dict'])
-            else:
-                print("=> no checkpoint found at '{}'".format(best_file_name))
-        else:
-            print("=> no checkpoint found at due to empy list in folder {}".format(args.save_path))
-        validate(valid_selection_loader, model, criterion_lidar, criterion_rgb, criterion_local, criterion_guide)
-        return
+    # elif args.evaluate:
+    #     print("Evaluate only")
+    #     best_file_lst = glob.glob(os.path.join(args.save_path, 'model_best*'))
+    #     if len(best_file_lst) != 0:
+    #         best_file_name = best_file_lst[0]
+    #         print(best_file_name)
+    #         if os.path.isfile(best_file_name):
+    #             sys.stdout = Logger(os.path.join(args.save_path, 'Evaluate.txt'))
+    #             print("=> loading checkpoint '{}'".format(best_file_name))
+    #             checkpoint = torch.load(best_file_name)
+    #             model.load_state_dict(checkpoint['state_dict'])
+    #         else:
+    #             print("=> no checkpoint found at '{}'".format(best_file_name))
+    #     else:
+    #         print("=> no checkpoint found at due to empy list in folder {}".format(args.save_path))
+    #     validate(valid_selection_loader, model, criterion_lidar, criterion_rgb, criterion_local, criterion_seg)
+    #     return
 
     # Start training from clean slate
     else:
@@ -230,10 +238,10 @@ def main():
     if args.pretrained and not args.resume:
         if not args.load_external_mod:
             if not args.multi:
-                target_state = model.depthnet.state_dict()
+                target_state = model.backbone.state_dict()
             else:
-                target_state = model.module.depthnet.state_dict()
-            check = torch.load('erfnet_pretrained.pth')
+                target_state = model.module.backbone.state_dict()
+            check = torch.load('./pretrained_models/erfnet_encoder_pretrained.pth.tar')
             for name, val in check.items():
                 # Exclude multi GPU prefix
                 mono_name = name[7:] 
@@ -284,24 +292,24 @@ def main():
         end = time.time()
 
         # Load dataset
-        for i, (input, gt) in tqdm(enumerate(train_loader)):
+        for i, (input, lidarGt, segGt) in tqdm(enumerate(train_loader)):
 
             # Time dataloader
             data_time.update(time.time() - end)
 
             # Put inputs on gpu if possible
             if not args.no_cuda:
-                input, gt = input.cuda(), gt.cuda()
-            prediction, lidar_out, precise, guide = model(input, epoch)
+                input, lidarGt, segGt = input.cuda(), lidarGt.cuda(), segGt.cuda()
+            coarse_depth, depth_cls, depth, segmap, _ = model(input, epoch)
 
-            loss = criterion_local(prediction, gt)
-            loss_lidar = criterion_lidar(lidar_out, gt)
-            loss_rgb = criterion_rgb(precise, gt)
-            loss_guide = criterion_guide(guide, gt)
-            loss = args.wpred*loss + args.wlid*loss_lidar + args.wrgb*loss_rgb + args.wguide*loss_guide
+            loss = criterion_local(coarse_depth, lidarGt)
+            loss_lidar = criterion_lidar(depth_cls, lidarGt)
+            loss_rgb = criterion_rgb(depth, lidarGt)
+            loss_seg = criterion_seg(segmap, segGt[:, 0])
+            loss = args.wpred*loss + args.wlid*loss_lidar + args.wrgb*loss_rgb + args.wguide*loss_seg
 
             losses.update(loss.item(), input.size(0))
-            metric_train.calculate(prediction[:, 0:1].detach(), gt.detach())
+            metric_train.calculate(depth[:, 0:1].detach(), lidarGt.detach())
             score_train.update(metric_train.get_metric(args.metric), metric_train.num)
             score_train_1.update(metric_train.get_metric(args.metric_1), metric_train.num)
 
@@ -333,18 +341,19 @@ def main():
         print("===> Average MAE score on training set is {:.4f}".format(score_train_1.avg))
         # Evaulate model on validation set
         print("=> Start validation set")
-        score_valid, score_valid_1, losses_valid = validate(valid_loader, model, criterion_lidar, criterion_rgb, criterion_local, criterion_guide, epoch)
+        score_valid, score_valid_1, losses_valid = validate(valid_loader, model, criterion_lidar, criterion_rgb, criterion_local, criterion_seg, epoch)
         print("===> Average RMSE score on validation set is {:.4f}".format(score_valid))
         print("===> Average MAE score on validation set is {:.4f}".format(score_valid_1))
         # Evaluate model on selected validation set
-        if args.subset is None:
-            print("=> Start selection validation set")
-            score_selection, score_selection_1, losses_selection = validate(valid_selection_loader, model, criterion_lidar, criterion_rgb, criterion_local, criterion_guide, epoch)
-            total_score = score_selection
-            print("===> Average RMSE score on selection set is {:.4f}".format(score_selection))
-            print("===> Average MAE score on selection set is {:.4f}".format(score_selection_1))
-        else:
-            total_score = score_valid
+        # if args.subset is None:
+        #     print("=> Start selection validation set")
+        #     score_selection, score_selection_1, losses_selection = validate(valid_selection_loader, model, criterion_lidar, criterion_rgb, criterion_local, criterion_seg, epoch)
+        #     total_score = score_selection
+        #     print("===> Average RMSE score on selection set is {:.4f}".format(score_selection))
+        #     print("===> Average MAE score on selection set is {:.4f}".format(score_selection_1))
+        # else:
+        #     total_score = score_valid
+        total_score = score_valid
 
         print("===> Last best score was RMSE of {:.4f} in epoch {}".format(lowest_loss,
                                                                            best_epoch))
@@ -376,7 +385,7 @@ def main():
         writer.close()
 
 
-def validate(loader, model, criterion_lidar, criterion_rgb, criterion_local, criterion_guide, epoch=0):
+def validate(loader, model, criterion_lidar, criterion_rgb, criterion_local, criterion_seg, epoch=0):
     # batch_time = AverageMeter()
     losses = AverageMeter()
     metric = Metrics(max_depth=args.max_depth, disp=args.use_disp, normal=args.normal)
@@ -387,19 +396,20 @@ def validate(loader, model, criterion_lidar, criterion_rgb, criterion_local, cri
     # Only forward pass, hence no grads needed
     with torch.no_grad():
         # end = time.time()
-        for i, (input, gt) in tqdm(enumerate(loader)):
+        for i, (input, lidarGt, segGt) in tqdm(enumerate(loader)):
             if not args.no_cuda:
-                input, gt = input.cuda(non_blocking=True), gt.cuda(non_blocking=True)
-            prediction, lidar_out, precise, guide = model(input, epoch)
+                input, lidarGt, segGt = input.cuda(non_blocking=True), lidarGt.cuda(non_blocking=True), segGt.cuda(non_blocking=True)
+            coarse_depth, depth_cls, depth, segmap, _ = model(input, epoch)
 
-            loss = criterion_local(prediction, gt, epoch)
-            loss_lidar = criterion_lidar(lidar_out, gt, epoch)
-            loss_rgb = criterion_rgb(precise, gt, epoch)
-            loss_guide = criterion_guide(guide, gt, epoch)
-            loss = args.wpred*loss + args.wlid*loss_lidar + args.wrgb*loss_rgb + args.wguide*loss_guide
+            loss = criterion_local(coarse_depth, lidarGt, epoch)
+            loss_lidar = criterion_lidar(depth_cls, lidarGt, epoch)
+            loss_rgb = criterion_rgb(depth, lidarGt, epoch)
+            loss_seg = criterion_seg(segmap, segGt[:, 0], epoch)
+            loss = args.wpred * loss + args.wlid * loss_lidar + args.wrgb * loss_rgb + args.wguide * loss_seg
+
             losses.update(loss.item(), input.size(0))
 
-            metric.calculate(prediction[:, 0:1], gt)
+            metric.calculate(depth[:, 0:1], lidarGt)
             score.update(metric.get_metric(args.metric), metric.num)
             score_1.update(metric.get_metric(args.metric_1), metric.num)
 
