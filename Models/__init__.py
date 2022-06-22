@@ -5,9 +5,11 @@ Licensed under the CC BY-NC 4.0 license (https://creativecommons.org/licenses/by
 
 from .model import uncertainty_net as model
 from .sgd import semantic_depth_net
+from .monod import mono_depth_net
 
 model_dict = {'mod': model,
-              'sdn': semantic_depth_net}
+              'sdn': semantic_depth_net,
+              'monod': mono_depth_net}
 
 def allowed_models():
     return model_dict.keys()

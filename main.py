@@ -66,7 +66,7 @@ parser.add_argument("--normal", type=str2bool, nargs='?', const=True, default=Fa
 parser.add_argument("--no_aug", type=str2bool, nargs='?', const=True, default=False, help="rotate image")
 
 # Paths settings
-parser.add_argument('--save_path', default='Saved/', help='save path')
+parser.add_argument('--save_path', default='AddLoss0515/', help='save path')
 parser.add_argument('--data_path', required=True, help='path to desired dataset')
 
 # Optimizer settings
@@ -114,6 +114,31 @@ class CrossEntropyLoss2d(torch.nn.Module):
         self.loss = torch.nn.NLLLoss2d(weight)
     def forward(self, outputs, targets, epoch=0):
         return self.loss(torch.nn.functional.log_softmax(outputs, dim=1), targets.long())
+
+class SmoothEdgeLoss(torch.nn.Module):
+    def __init__(self):
+        super(SmoothEdgeLoss, self).__init__()
+        self.alpha = 0.2
+        self.beta = 1.2
+    def forward(self, depth, img):
+        grad_depth_x = torch.abs(depth[:, :, :, :-1] - depth[:, :, :, 1:])
+        grad_depth_y = torch.abs(depth[:, :, :-1, :] - depth[:, :, 1:, :])
+        # grad_depth_x = (grad_depth_x - torch.min(grad_depth_x)) / (torch.max(grad_depth_x) - torch.min(grad_depth_x))
+        # grad_depth_y = (grad_depth_y - torch.min(grad_depth_y)) / (torch.max(grad_depth_y) - torch.min(grad_depth_y))
+
+        grad_seg_x = torch.mean(torch.abs(img[:, :, :, :-1] - img[:, :, :, 1:]), 1, keepdim=True)
+        grad_seg_y = torch.mean(torch.abs(img[:, :, :-1, :] - img[:, :, 1:, :]), 1, keepdim=True)
+        grad_seg_x = (grad_seg_x - torch.min(grad_seg_x)) / (torch.max(grad_seg_x) - torch.min(grad_seg_x))
+        grad_seg_y = (grad_seg_y - torch.min(grad_seg_y)) / (torch.max(grad_seg_y) - torch.min(grad_seg_y))
+
+
+        smoothX = torch.max(torch.zeros_like(grad_depth_x), grad_depth_x - self.alpha) * (1 - grad_seg_x)
+        smoothY = torch.max(torch.zeros_like(grad_depth_y), grad_depth_y - self.alpha) * (1 - grad_seg_y)
+        edgeX = torch.max(torch.zeros_like(grad_depth_x), self.beta - grad_depth_x) * grad_seg_x
+        edgeY = torch.max(torch.zeros_like(grad_depth_y), self.beta - grad_depth_y) * grad_seg_y
+        # print(smoothX.mean(), smoothY.mean(), edgeX.mean(), edgeY.mean())
+        return smoothX.mean() + smoothY.mean() + edgeX.mean() + edgeY.mean()
+
 
 def main():
     global args
@@ -171,6 +196,7 @@ def main():
     # criterion_guide = define_loss(args.loss_criterion)
     weight = torch.ones(9)
     criterion_seg = CrossEntropyLoss2d(None)
+    criterion_smoothedge = SmoothEdgeLoss()
 
     # INIT dataset
     dataset = Datasets.define_dataset(args.dataset, args.data_path, args.input_type)
@@ -306,7 +332,8 @@ def main():
             loss_lidar = criterion_lidar(depth_cls, lidarGt)
             loss_rgb = criterion_rgb(depth, lidarGt)
             loss_seg = criterion_seg(segmap, segGt[:, 0])
-            loss = args.wpred*loss + args.wlid*loss_lidar + args.wrgb*loss_rgb + args.wguide*loss_seg
+            loss_smoothedge = criterion_smoothedge(depth, input[:, 2:]*255)
+            loss = args.wpred*loss + args.wlid*loss_lidar + args.wrgb*loss_rgb + args.wguide*loss_seg + loss_smoothedge
 
             losses.update(loss.item(), input.size(0))
             metric_train.calculate(depth[:, 0:1].detach(), lidarGt.detach())

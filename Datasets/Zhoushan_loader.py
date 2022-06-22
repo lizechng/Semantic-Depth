@@ -45,11 +45,8 @@ class Zhoushan_preprocessing(object):
         self.selected_paths = {'img': [], 'depth_in': [], 'velo_in': [], 'lidar_gt': [], 'seg_gt': []}
         self.test_files = {'img': [], 'depth_in': [], 'velo_in': []}
         self.dataset_path = dataset_path
-        self.depth_keyword = 'proj_depth'
-        self.rgb_keyword = 'Rgb'
         self.use_rgb = input_type == 'rgb'
         # self.use_rgb = True
-        self.date_selection = '20211027'
 
     def get_paths(self):
         # train and validation dirs
@@ -84,7 +81,7 @@ class Zhoushan_preprocessing(object):
                                                           and re.search('train', root)
                                                           and re.search('png', file)]))
                 self.val_paths['seg_gt'].extend(sorted([os.path.join(root, file) for file in files
-                                                        if re.search('segmentation', root)
+                                                        if re.search('depth', root) # TODO: segmentation
                                                         and re.search('val', root)
                                                         and re.search('png', file)]))
                 if self.use_rgb:

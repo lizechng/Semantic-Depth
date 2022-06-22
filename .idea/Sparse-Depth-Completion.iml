@@ -2,13 +2,15 @@
 <module type="PYTHON_MODULE" version="4">
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
+      <excludeFolder url="file://$MODULE_DIR$/DepthTestData" />
+      <excludeFolder url="file://$MODULE_DIR$/DepthTestData_352x1000" />
       <excludeFolder url="file://$MODULE_DIR$/DepthTrainData_352x1000" />
       <excludeFolder url="file://$MODULE_DIR$/DepthTrainData_704x2000" />
       <excludeFolder url="file://$MODULE_DIR$/Saved" />
       <excludeFolder url="file://$MODULE_DIR$/Zhoushan" />
       <excludeFolder url="file://$MODULE_DIR$/Zhoushan_mini" />
     </content>
-    <orderEntry type="jdk" jdkName="Python 3.7 (sgd)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="Python 3.7 (srdc)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
   <component name="PyDocumentationSettings">
